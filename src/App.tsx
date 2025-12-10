@@ -119,16 +119,16 @@ function App() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   
   // Onboarding state
-  const [onboardingStep, setOnboardingStep] = useState<"choice" | "provider" | "customer" | "complete">("choice");
+  const [onboardingStep, setOnboardingStep] = useState<"choice" | "provider" | "customer" | "complete" | "none">("none");
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (users.length > 0) {
       const user = users[0];
       setCurrentUser(user);
-      if (user.onboardingCompleted === "true") {
-        setOnboardingStep("complete");
-      }
+      setOnboardingStep("none"); // Skip onboarding if user exists
+    } else {
+      setOnboardingStep("choice"); // Show onboarding only if no user exists
     }
   }, [users]);
 
@@ -293,16 +293,16 @@ function App() {
     setOnboardingStep("complete");
   };
 
-  // Show onboarding if not completed
-  if (onboardingStep === "choice") {
+  // Show onboarding ONLY if no user exists and in choice/provider/customer step
+  if (users.length === 0 && onboardingStep === "choice") {
     return <OnboardingChoice onSelectUserType={handleSelectUserType} />;
   }
 
-  if (onboardingStep === "provider") {
+  if (users.length === 0 && onboardingStep === "provider") {
     return <ProviderOnboarding onComplete={handleProviderOnboardingComplete} />;
   }
 
-  if (onboardingStep === "customer") {
+  if (users.length === 0 && onboardingStep === "customer") {
     return <CustomerOnboarding onComplete={handleCustomerOnboardingComplete} onSkip={handleCustomerSkip} />;
   }
 
