@@ -8,12 +8,13 @@ import { Badge } from "./components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Label } from "./components/ui/label";
 import { Textarea } from "./components/ui/textarea";
-import { Star, Search, MapPin, Calendar, Clock, User, Mail, Phone, CheckCircle2 } from "lucide-react";
+import { Star, Search, MapPin, Calendar, Clock, User, Mail, Phone, CheckCircle2, LogOut, Menu, X } from "lucide-react";
 import OnboardingChoice from "./components/OnboardingChoice";
 import ProviderOnboarding from "./components/ProviderOnboarding";
 import CustomerOnboarding from "./components/CustomerOnboarding";
 import { ReviewModal } from "./components/ReviewModal";
 import { ReviewDisplay } from "./components/ReviewDisplay";
+import { ProfileSettings } from "./components/ProfileSettings";
 
 type Service = {
   id: number;
@@ -98,7 +99,7 @@ const categories = [
 function App() {
   const { items: services, loading, create: createService } = useEntity<Service>(serviceEntityConfig);
   const { create: createBooking } = useEntity<Booking>(bookingEntityConfig);
-  const { items: users, create: createUser } = useEntity<UserProfile>(userEntityConfig);
+  const { items: users, create: createUser, update: updateUser } = useEntity<UserProfile>(userEntityConfig);
   const { items: reviews, create: createReview } = useEntity<Review>(reviewEntityConfig);
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -121,13 +122,18 @@ function App() {
   // Onboarding state
   const [onboardingStep, setOnboardingStep] = useState<"choice" | "provider" | "customer" | "complete" | "none">("none");
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", phone: "" });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (users.length > 0) {
       const user = users[0];
       setCurrentUser(user);
       setOnboardingStep("none"); // Skip onboarding if user exists
-    } else {
+    } else if (onboardingStep === "none") {
       setOnboardingStep("choice"); // Show onboarding only if no user exists
     }
   }, [users]);
@@ -293,6 +299,51 @@ function App() {
     setOnboardingStep("complete");
   };
 
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setOnboardingStep("choice");
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (authMode === "signin") {
+      // In real app, this would authenticate against a backend
+      // For demo, we just create/find a user
+      const existingUser = users.find(u => u.email === authForm.email);
+      if (existingUser) {
+        setCurrentUser(existingUser);
+        setAuthModalOpen(false);
+        setAuthForm({ name: "", email: "", password: "", phone: "" });
+        setOnboardingStep("none");
+      } else {
+        alert("User not found. Please sign up first.");
+      }
+    } else {
+      // Sign up - create new user
+      if (!authForm.name || !authForm.email || !authForm.phone) {
+        alert("Please fill in all fields");
+        return;
+      }
+      const newUser = {
+        name: authForm.name,
+        email: authForm.email,
+        phone: authForm.phone,
+        userType: "customer" as const,
+        avatar: "",
+        serviceCategories: "",
+        description: "",
+        hourlyRate: 0,
+        experience: "",
+        preferredCategories: "",
+        location: "",
+        onboardingCompleted: "false",
+      };
+      createUser(newUser);
+      setAuthModalOpen(false);
+      setAuthForm({ name: "", email: "", password: "", phone: "" });
+    }
+  };
+
   // Show onboarding ONLY if no user exists and in choice/provider/customer step
   if (users.length === 0 && onboardingStep === "choice") {
     return <OnboardingChoice onSelectUserType={handleSelectUserType} />;
@@ -401,17 +452,60 @@ function App() {
                 Tasksmith
               </h1>
             </div>
-            <div className="flex items-center gap-3">
-              {currentUser && (
+            <div className="flex items-center gap-4">
+              {currentUser ? (
+                <>
+                  <div className="flex items-center gap-3">
+                    {currentUser.avatar ? (
+                      <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                        <User className="w-4 h-4 text-blue-600" />
+                      </div>
+                    )}
+                    <span className="text-sm font-medium text-gray-700">{currentUser.name}</span>
+                  </div>
+                  <Button
+                    onClick={() => setProfileSettingsOpen(true)}
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                  >
+                    Edit Profile
+                  </Button>
+                  <Button
+                    onClick={handleLogout}
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden sm:inline">Logout</span>
+                  </Button>
+                </>
+              ) : (
                 <div className="flex items-center gap-2">
-                  {currentUser.avatar ? (
-                    <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                      <User className="w-4 h-4 text-blue-600" />
-                    </div>
-                  )}
-                  <span className="text-sm font-medium text-gray-700">{currentUser.name}</span>
+                  <Button
+                    onClick={() => {
+                      setAuthMode("signin");
+                      setAuthModalOpen(true);
+                    }}
+                    variant="ghost"
+                    size="sm"
+                    className="text-gray-700 hover:text-gray-900"
+                  >
+                    Sign In
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setAuthMode("signup");
+                      setAuthModalOpen(true);
+                    }}
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Sign Up
+                  </Button>
                 </div>
               )}
             </div>
@@ -757,6 +851,102 @@ function App() {
           </div>
         </div>
       </footer>
+
+      {/* Profile Settings Modal */}
+      {profileSettingsOpen && currentUser && (
+        <ProfileSettings
+          user={currentUser}
+          onUpdate={async (updatedData) => {
+            await updateUser(currentUser.id, updatedData);
+            // Update currentUser with new data
+            setCurrentUser({ ...currentUser, ...updatedData });
+          }}
+          onClose={() => setProfileSettingsOpen(false)}
+        />
+      )}
+
+      {/* Auth Modal */}
+      <Dialog open={authModalOpen} onOpenChange={setAuthModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{authMode === "signin" ? "Sign In" : "Create Account"}</DialogTitle>
+            <DialogDescription>
+              {authMode === "signin" ? "Sign in to your Tasksmith account" : "Create a new account to get started"}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            {authMode === "signup" && (
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="John Doe"
+                  value={authForm.name}
+                  onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
+                  required
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={authForm.email}
+                onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                required
+              />
+            </div>
+            {authMode === "signup" && (
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="(555) 123-4567"
+                  value={authForm.phone}
+                  onChange={(e) => setAuthForm({ ...authForm, phone: e.target.value })}
+                  required
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={authForm.password}
+                onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
+              {authMode === "signin" ? "Sign In" : "Create Account"}
+            </Button>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-gray-300"></span>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">or</span>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setAuthMode(authMode === "signin" ? "signup" : "signin");
+              }}
+            >
+              {authMode === "signin" ? "Create a new account" : "Already have an account"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
