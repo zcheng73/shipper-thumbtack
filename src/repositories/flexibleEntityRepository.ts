@@ -1,164 +1,133 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { db } from "../database/Database";
+import { db } from "../database/client";
+import type { EntityConfig } from "../hooks/useEntity";
 
-export type EntityRecord = Record<string, unknown> & { id?: number | string };
+export class FlexibleEntityRepository<T extends Record<string, any>> {
+  constructor(private config: EntityConfig) {}
 
-export type RepositoryOptions = {
-  entityType: string;
-  orderBy?: string;
-};
+  async findAll(): Promise<T[]> {
+    const entityType = this.config.entityType || this.config.name;
+    let sql = `SELECT id, entity_type, data, created_at, updated_at FROM entities WHERE entity_type = $1`;
 
-/**
- * Create a repository for managing entities in the flexible single-table design
- * All entities are stored in the 'entities' table with their type and JSON data
- *
- * IMPORTANT: Sorting is done CLIENT-SIDE after fetching data
- * - Entity properties are stored in a JSON 'data' column, not as separate DB columns
- * - The orderBy option can reference ANY field (including JSON fields like 'order_position', 'priority', etc.)
- * - Sorting happens in JavaScript after parsing JSON, not in SQL
- * - This allows flexible ordering without schema changes
- * - Works well for small-to-medium datasets (<1000 records per entity type)
- */
-export const createFlexibleRepository = (options: RepositoryOptions) => {
-  const { entityType, orderBy } = options;
-
-  const list = async <T extends EntityRecord>(): Promise<T[]> => {
-    const rows = await db.query(
-      `SELECT id, data, created_at, updated_at
-       FROM entities
-       WHERE entity_type = ?`,
-      [entityType]
-    );
-
-    const items = rows.map((row) => ({
-      id: row.id,
-      ...(JSON.parse(row.data as string) as object),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    })) as unknown as T[];
-
-    if (orderBy) {
-      return sortItems(items, orderBy);
+    if (this.config.orderBy) {
+      sql += ` ORDER BY ${this.config.orderBy}`;
     }
 
-    return items;
-  };
+    try {
+      const rows = await db.execute(sql, [entityType]);
+      return rows.map((row) => this.rowToEntity(row));
+    } catch (error) {
+      console.error("Error finding all entities:", error);
+      throw error;
+    }
+  }
 
-  const sortItems = <T extends EntityRecord>(
-    items: T[],
-    orderBy: string
-  ): T[] => {
-    const sortClauses = orderBy.split(",").map((clause) => {
-      const parts = clause.trim().split(/\s+/);
-      return {
-        field: parts[0],
-        direction: parts[1]?.toUpperCase() === "DESC" ? "DESC" : "ASC",
-      };
-    });
+  async findById(id: number): Promise<T | null> {
+    const entityType = this.config.entityType || this.config.name;
+    const sql = `SELECT id, entity_type, data, created_at, updated_at FROM entities WHERE entity_type = $1 AND id = $2`;
 
-    return [...items].sort((a, b) => {
-      for (const { field, direction } of sortClauses) {
-        const aVal = (a as any)[field];
-        const bVal = (b as any)[field];
+    try {
+      const rows = await db.execute(sql, [entityType, id]);
+      if (rows.length === 0) return null;
+      return this.rowToEntity(rows[0]);
+    } catch (error) {
+      console.error("Error finding entity by id:", error);
+      throw error;
+    }
+  }
 
-        if (aVal === bVal) continue;
-
-        const comparison = aVal < bVal ? -1 : 1;
-        return direction === "DESC" ? -comparison : comparison;
+  async create(data: Partial<T>): Promise<T> {
+    const entityType = this.config.entityType || this.config.name;
+    
+    // Apply defaults
+    const entityData: any = { ...data };
+    if (this.config.properties) {
+      for (const [key, prop] of Object.entries(this.config.properties)) {
+        if (prop.default !== undefined && entityData[key] === undefined) {
+          entityData[key] = prop.default;
+        }
       }
-      return 0;
-    });
-  };
+    }
 
-  const get = async <T extends EntityRecord>(
-    id: string | number
-  ): Promise<T | null> => {
-    const rows = await db.query(
-      `SELECT id, data, created_at, updated_at
-       FROM entities
-       WHERE entity_type = ? AND id = ?`,
-      [entityType, id]
-    );
+    const sql = `INSERT INTO entities (entity_type, data, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, entity_type, data, created_at, updated_at`;
 
-    if (rows.length === 0) return null;
+    try {
+      const rows = await db.execute(sql, [entityType, JSON.stringify(entityData)]);
+      return this.rowToEntity(rows[0]);
+    } catch (error) {
+      console.error("Error creating entity:", error);
+      throw error;
+    }
+  }
 
-    const row = rows[0];
+  async update(id: number, data: Partial<T>): Promise<T> {
+    const entityType = this.config.entityType || this.config.name;
+    
+    // Get existing entity
+    const existing = await this.findById(id);
+    if (!existing) {
+      throw new Error(`Entity with id ${id} not found`);
+    }
+
+    // Merge data
+    const { id: _, created_at, updated_at, ...existingData } = existing as any;
+    const updatedData = { ...existingData, ...(data as any) };
+
+    const sql = `UPDATE entities SET data = $1, updated_at = NOW() WHERE entity_type = $2 AND id = $3 RETURNING id, entity_type, data, created_at, updated_at`;
+
+    try {
+      const rows = await db.execute(sql, [JSON.stringify(updatedData), entityType, id]);
+      return this.rowToEntity(rows[0]);
+    } catch (error) {
+      console.error("Error updating entity:", error);
+      throw error;
+    }
+  }
+
+  async delete(id: number): Promise<void> {
+    const entityType = this.config.entityType || this.config.name;
+    const sql = `DELETE FROM entities WHERE entity_type = $1 AND id = $2`;
+
+    try {
+      await db.execute(sql, [entityType, id]);
+    } catch (error) {
+      console.error("Error deleting entity:", error);
+      throw error;
+    }
+  }
+
+  async findWhere(conditions: Partial<T>): Promise<T[]> {
+    const entityType = this.config.entityType || this.config.name;
+    let sql = `SELECT id, entity_type, data, created_at, updated_at FROM entities WHERE entity_type = $1`;
+    const params: any[] = [entityType];
+    
+    // Add JSON conditions for each field
+    let paramIndex = 2;
+    for (const [key, value] of Object.entries(conditions)) {
+      sql += ` AND data->>'${key}' = $${paramIndex}`;
+      params.push(String(value));
+      paramIndex++;
+    }
+
+    if (this.config.orderBy) {
+      sql += ` ORDER BY ${this.config.orderBy}`;
+    }
+
+    try {
+      const rows = await db.execute(sql, params);
+      return rows.map((row) => this.rowToEntity(row));
+    } catch (error) {
+      console.error("Error finding entities with conditions:", error);
+      throw error;
+    }
+  }
+
+  private rowToEntity(row: any): T {
+    const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
     return {
       id: row.id,
-      ...(JSON.parse(row.data as string) as object),
+      ...data,
       created_at: row.created_at,
       updated_at: row.updated_at,
-    } as unknown as T;
-  };
-
-  const create = async <T extends EntityRecord>(
-    data: Omit<T, "id" | "created_at" | "updated_at">
-  ): Promise<T> => {
-    const dataJson = JSON.stringify(data);
-    const result = await db.execute(
-      `INSERT INTO entities (entity_type, data) VALUES (?, ?)`,
-      [entityType, dataJson]
-    );
-
-    const id = Number(result.lastInsertRowid);
-    return (await get<T>(id)) as T;
-  };
-
-  const update = async <T extends EntityRecord>(
-    id: string | number,
-    data: Partial<T>
-  ): Promise<void> => {
-    // Get existing data
-    const existing = await get<T>(id);
-    if (!existing) throw new Error(`Entity ${id} not found`);
-
-    // Merge with new data (exclude metadata fields)
-    const { id: _, created_at, updated_at, ...existingData } = existing as any;
-    const merged = { ...existingData, ...data };
-    const dataJson = JSON.stringify(merged);
-
-    await db.run(
-      `UPDATE entities
-       SET data = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE entity_type = ? AND id = ?`,
-      [dataJson, entityType, id]
-    );
-  };
-
-  const remove = async (id: string | number): Promise<void> => {
-    await db.run(`DELETE FROM entities WHERE entity_type = ? AND id = ?`, [
-      entityType,
-      id,
-    ]);
-  };
-
-  const count = async (): Promise<number> => {
-    const rows = await db.query(
-      `SELECT COUNT(*) as count FROM entities WHERE entity_type = ?`,
-      [entityType]
-    );
-    return (rows[0]?.count as number) ?? 0;
-  };
-
-  const findWhere = async <T extends EntityRecord>(
-    conditions: Record<string, unknown>
-  ): Promise<T[]> => {
-    // Load all entities of this type and filter in-memory
-    // For better performance with large datasets, consider using json_extract in WHERE clause
-    const all = await list<T>();
-    return all.filter((item) => {
-      return Object.entries(conditions).every(([key, value]) => {
-        return (item as any)[key] === value;
-      });
-    });
-  };
-
-  const findOne = async <T extends EntityRecord>(
-    conditions: Record<string, unknown>
-  ): Promise<T | null> => {
-    const rows = await findWhere<T>(conditions);
-    return rows[0] ?? null;
-  };
-
-  return { list, get, create, update, remove, count, findWhere, findOne };
-};
+    } as T;
+  }
+}

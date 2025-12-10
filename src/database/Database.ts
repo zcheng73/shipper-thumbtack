@@ -1,14 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { turso } from "./client";
+import { db } from "./client";
 
 export class Database {
   async query(sql: string, params?: any[]): Promise<any[]> {
     try {
-      const result = await turso.execute({
-        sql,
-        args: params || [],
-      });
-      return result.rows;
+      return await db.execute(sql, params || []);
     } catch (error) {
       console.error("[Database] Query error:", error);
       throw error;
@@ -17,10 +13,7 @@ export class Database {
 
   async run(sql: string, params?: any[]): Promise<void> {
     try {
-      await turso.execute({
-        sql,
-        args: params || [],
-      });
+      await db.execute(sql, params || []);
     } catch (error) {
       console.error("[Database] Run error:", error);
       throw error;
@@ -32,11 +25,10 @@ export class Database {
     params?: any[]
   ): Promise<{ lastInsertRowid: bigint | undefined }> {
     try {
-      const result = await turso.execute({
-        sql,
-        args: params || [],
-      });
-      return { lastInsertRowid: result.lastInsertRowid };
+      const rows = await db.execute(sql, params || []);
+      // PostgreSQL returns the inserted row with RETURNING clause
+      const lastId = rows.length > 0 && rows[0].id ? BigInt(rows[0].id) : undefined;
+      return { lastInsertRowid: lastId };
     } catch (error) {
       console.error("[Database] Execute error:", error);
       throw error;
@@ -44,4 +36,4 @@ export class Database {
   }
 }
 
-export const db = new Database();
+export const database = new Database();

@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  createFlexibleRepository,
-  type EntityRecord,
-} from "../repositories/flexibleEntityRepository";
+import { FlexibleEntityRepository } from "../repositories/flexibleEntityRepository";
 
 export type EntityField = {
   type: "string" | "number" | "integer";
@@ -20,14 +17,17 @@ export type EntityConfig = {
   required?: string[];
 };
 
+export type EntityRecord = {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  [key: string]: any;
+};
+
 export const useEntity = <T extends EntityRecord>(config: EntityConfig) => {
   const repo = useMemo(
-    () =>
-      createFlexibleRepository({
-        entityType: config.entityType || config.name,
-        orderBy: config.orderBy,
-      }),
-    [config.entityType, config.name, config.orderBy]
+    () => new FlexibleEntityRepository<T>(config),
+    [config]
   );
 
   const [items, setItems] = useState<T[]>([]);
@@ -38,7 +38,8 @@ export const useEntity = <T extends EntityRecord>(config: EntityConfig) => {
     setLoading(true);
     setError(null);
     try {
-      setItems(await repo.list<T>());
+      const data = await repo.findAll();
+      setItems(data);
     } catch (e) {
       setError(e);
     } finally {
@@ -48,7 +49,7 @@ export const useEntity = <T extends EntityRecord>(config: EntityConfig) => {
 
   const create = useCallback(
     async (data: Omit<T, "id" | "created_at" | "updated_at">) => {
-      await repo.create<T>(data);
+      await repo.create(data as Partial<T>);
       await reload();
     },
     [repo, reload]
@@ -56,7 +57,7 @@ export const useEntity = <T extends EntityRecord>(config: EntityConfig) => {
 
   const update = useCallback(
     async (id: string | number, data: Partial<T>) => {
-      await repo.update<T>(id, data);
+      await repo.update(Number(id), data);
       await reload();
     },
     [repo, reload]
@@ -64,7 +65,7 @@ export const useEntity = <T extends EntityRecord>(config: EntityConfig) => {
 
   const remove = useCallback(
     async (id: string | number) => {
-      await repo.remove(id);
+      await repo.delete(Number(id));
       await reload();
     },
     [repo, reload]
