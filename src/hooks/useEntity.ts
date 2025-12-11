@@ -1,19 +1,10 @@
 import { useState, useEffect } from 'react';
-import { FlexibleEntityRepository } from '../repositories/flexibleEntityRepository';
+import * as api from '../database/api';
 
 export interface EntityConfig {
   name: string;
-  entityType?: string;
   orderBy?: string;
-  properties: {
-    [key: string]: {
-      type: string;
-      description?: string;
-      enum?: string[];
-      default?: any;
-      format?: string;
-    };
-  };
+  properties: Record<string, any>;
   required?: string[];
 }
 
@@ -22,16 +13,13 @@ export function useEntity<T extends { id: number }>(config: EntityConfig) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
 
-  const repository = new FlexibleEntityRepository(config);
-
-  const loadItems = async () => {
+  const reload = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await repository.findAll();
-      setItems(data as T[]);
+      const data = await api.getEntities(config.name);
+      setItems(data);
     } catch (err) {
-      console.error(`Error loading ${config.name}:`, err);
       setError(err);
       setItems([]);
     } finally {
@@ -40,16 +28,15 @@ export function useEntity<T extends { id: number }>(config: EntityConfig) {
   };
 
   useEffect(() => {
-    loadItems();
-  }, []);
+    reload();
+  }, [config.name]);
 
   const create = async (data: Omit<T, 'id' | 'created_at' | 'updated_at'>) => {
     try {
-      const newItem = await repository.create(data);
-      setItems(prev => [...prev, newItem as T]);
-      return newItem as T;
+      const result = await api.createEntity(config.name, data);
+      setItems([result as T, ...items]);
+      return result;
     } catch (err) {
-      console.error(`Error creating ${config.name}:`, err);
       setError(err);
       throw err;
     }
@@ -57,11 +44,10 @@ export function useEntity<T extends { id: number }>(config: EntityConfig) {
 
   const update = async (id: number, data: Partial<T>) => {
     try {
-      const updated = await repository.update(id, data);
-      setItems(prev => prev.map(item => item.id === id ? updated as T : item));
-      return updated as T;
+      const result = await api.updateEntity(id, data);
+      setItems(items.map(item => (item.id === id ? (result as T) : item)));
+      return result;
     } catch (err) {
-      console.error(`Error updating ${config.name}:`, err);
       setError(err);
       throw err;
     }
@@ -69,23 +55,13 @@ export function useEntity<T extends { id: number }>(config: EntityConfig) {
 
   const remove = async (id: number) => {
     try {
-      await repository.delete(id);
-      setItems(prev => prev.filter(item => item.id !== id));
+      await api.deleteEntity(id);
+      setItems(items.filter(item => item.id !== id));
     } catch (err) {
-      console.error(`Error deleting ${config.name}:`, err);
       setError(err);
       throw err;
     }
   };
 
-  return {
-    items,
-    loading,
-    error,
-    create,
-    update,
-    remove,
-    reload: loadItems,
-    config,
-  };
+  return { items, loading, error, reload, create, update, remove, config };
 }
