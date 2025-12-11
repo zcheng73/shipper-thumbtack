@@ -8,13 +8,15 @@ import { Badge } from "./components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Label } from "./components/ui/label";
 import { Textarea } from "./components/ui/textarea";
-import { Star, Search, MapPin, Calendar, Clock, User, Mail, Phone, CheckCircle2, LogOut, Menu, X } from "lucide-react";
+import { Star, Search, MapPin, Calendar, Clock, User, Mail, Phone, CheckCircle2, LogOut, Menu, X, Settings } from "lucide-react";
 import OnboardingChoice from "./components/OnboardingChoice";
 import ProviderOnboarding from "./components/ProviderOnboarding";
 import CustomerOnboarding from "./components/CustomerOnboarding";
 import { ReviewModal } from "./components/ReviewModal";
 import { ReviewDisplay } from "./components/ReviewDisplay";
 import { ProfileSettings } from "./components/ProfileSettings";
+import { DatabaseSettings } from "./components/DatabaseSettings";
+import { DatabaseSetupPrompt } from "./components/DatabaseSetupPrompt";
 
 type Service = {
   id: number;
@@ -97,9 +99,9 @@ const categories = [
 ];
 
 function App() {
-  const { items: services, loading, create: createService } = useEntity<Service>(serviceEntityConfig);
+  const { items: services, loading, error: servicesError, create: createService } = useEntity<Service>(serviceEntityConfig);
   const { create: createBooking } = useEntity<Booking>(bookingEntityConfig);
-  const { items: users, create: createUser, update: updateUser } = useEntity<UserProfile>(userEntityConfig);
+  const { items: users, error: usersError, create: createUser, update: updateUser } = useEntity<UserProfile>(userEntityConfig);
   const { items: reviews, create: createReview } = useEntity<Review>(reviewEntityConfig);
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -127,6 +129,8 @@ function App() {
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", phone: "" });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [dbSettingsOpen, setDbSettingsOpen] = useState(false);
+  const hasDbError = servicesError || usersError;
 
   useEffect(() => {
     if (users.length > 0) {
@@ -438,6 +442,11 @@ function App() {
     );
   };
 
+  // Show database setup prompt if there's an error
+  if (hasDbError && !loading) {
+    return <DatabaseSetupPrompt onOpenSettings={() => setDbSettingsOpen(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
       {/* Header */}
@@ -472,6 +481,14 @@ function App() {
                     className="flex items-center gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                   >
                     Edit Profile
+                  </Button>
+                  <Button
+                    onClick={() => setDbSettingsOpen(true)}
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center gap-2 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
+                  >
+                    <Settings className="w-4 h-4" />
                   </Button>
                   <Button
                     onClick={handleLogout}
@@ -945,6 +962,19 @@ function App() {
               {authMode === "signin" ? "Create a new account" : "Already have an account"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Database Settings Modal */}
+      <Dialog open={dbSettingsOpen} onOpenChange={setDbSettingsOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Database Settings</DialogTitle>
+            <DialogDescription>
+              Configure your PostgreSQL database connection for Tasksmith
+            </DialogDescription>
+          </DialogHeader>
+          <DatabaseSettings />
         </DialogContent>
       </Dialog>
     </div>

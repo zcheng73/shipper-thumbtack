@@ -1,9 +1,10 @@
 import { Pool } from 'pg';
+import { DATABASE_URL, DATABASE_SSL } from './config';
 
 // PostgreSQL connection pool
 const pool = new Pool({
-  connectionString: import.meta.env.VITE_DATABASE_URL,
-  ssl: import.meta.env.VITE_DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  connectionString: DATABASE_URL,
+  ssl: DATABASE_SSL ? { rejectUnauthorized: false } : false,
 });
 
 // Test connection on initialization

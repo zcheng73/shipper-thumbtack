@@ -131,3 +131,7 @@ export class FlexibleEntityRepository<T extends Record<string, any>> {
     } as T;
   }
 }
+
+export function createFlexibleEntityRepository<T extends Record<string, any>>(config: EntityConfig): FlexibleEntityRepository<T> {
+  return new FlexibleEntityRepository<T>(config);
+}
