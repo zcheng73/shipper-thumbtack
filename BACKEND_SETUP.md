@@ -1,24 +1,38 @@
-# Backend API Setup Guide
+# Tasksmith Backend Setup Guide
 
-Your Tasksmith app now uses a Node.js backend to safely connect to PostgreSQL. The frontend calls the backend API, which handles all database operations securely.
+This guide will help you set up the backend API server for Tasksmith.
 
-## Architecture
+## Architecture Overview
 
 ```
-Frontend (React) → Backend API (Express) → PostgreSQL Database
+Frontend (React/Vite) → Backend API (Express) → PostgreSQL Database
+     Port 5173              Port 3001           Port 5432
 ```
 
-This is the secure, industry-standard approach.
+## Prerequisites
 
-## Quick Start
+- Node.js 18+ installed
+- PostgreSQL database (local or remote)
+- Database credentials
+
+## Setup Steps
 
 ### 1. Install Backend Dependencies
 
 ```bash
-npm install express pg cors dotenv
+cd backend
+npm install
 ```
 
-### 2. Create `.env` file in project root
+This installs:
+- `express` - Web server framework
+- `pg` - PostgreSQL client
+- `cors` - Cross-origin resource sharing
+- `dotenv` - Environment variable management
+
+### 2. Configure Database Connection
+
+The `.env` file is already configured with your database:
 
 ```env
 DATABASE_URL=postgresql://postgres:!11Thesame@185.221.22.73:5432/tasksmith
@@ -26,9 +40,11 @@ DATABASE_SSL=true
 PORT=3001
 ```
 
-### 3. Create the Database Schema
+If you need to change it, edit `backend/.env`
 
-Connect to your PostgreSQL database and run this SQL (one-time only):
+### 3. Create Database Schema (One-Time)
+
+Connect to your PostgreSQL database and run this SQL:
 
 ```sql
 CREATE TABLE IF NOT EXISTS entities (
@@ -46,119 +62,121 @@ CREATE INDEX IF NOT EXISTS idx_data_gin ON entities USING GIN (data);
 **Using psql:**
 ```bash
 psql -h 185.221.22.73 -U postgres -d tasksmith
+# Then paste the SQL above
 ```
 
-Then paste the SQL above.
+**Using pgAdmin or other GUI:**
+- Connect to your database
+- Open SQL query window
+- Paste and execute the SQL above
 
 ### 4. Start the Backend Server
 
 ```bash
-node server.js
+cd backend
+npm start
 ```
 
 You should see:
 ```
-Server running on port 3001
-Database: postgresql://postgres:...@185.221.22.73:5432/tasksmith
+🚀 Backend server running on port 3001
+📊 Database: 185.221.22.73:5432/tasksmith
+🔗 API endpoint: http://localhost:3001/api
 ```
 
-### 5. In another terminal, start the frontend dev server
+### 5. Start the Frontend
+
+In a **new terminal**, from the project root:
 
 ```bash
 npm run dev
 ```
 
-## Backend API Endpoints
+Your app will open at `http://localhost:5173`
 
-The backend provides these REST endpoints:
+## Verify Everything Works
 
-- `GET /api/health` - Server health check
-- `GET /api/db-test` - Test database connection
-- `GET /api/entities/:entityType` - Get all entities of a type
-- `POST /api/entities` - Create new entity
-- `PUT /api/entities/:id` - Update entity
-- `DELETE /api/entities/:id` - Delete entity
+1. Open your browser to `http://localhost:5173`
+2. The app should load without errors
+3. Try creating a user account
+4. Check your PostgreSQL database - you should see data in the `entities` table
 
-## Environment Variables
+## API Endpoints
 
-**Frontend (.env.local):**
+The backend provides these endpoints:
+
+- `GET /api/health` - Check server and database status
+- `GET /api/entities/:type` - Get all entities of a type
+- `POST /api/entities/:type` - Create new entity
+- `PUT /api/entities/:type/:id` - Update entity
+- `DELETE /api/entities/:type/:id` - Delete entity
+
+## Troubleshooting
+
+### "ECONNREFUSED" Error
+- Make sure the backend server is running (`npm start` in `backend/` folder)
+- Check that PORT 3001 is not in use by another process
+
+### "Connection refused" to PostgreSQL
+- Verify your database is running
+- Check the `DATABASE_URL` in `backend/.env`
+- Ensure your firewall allows connections to PostgreSQL
+
+### "relation 'entities' does not exist"
+- Run the database schema SQL (Step 3 above)
+
+### CORS Errors
+- Make sure both frontend and backend servers are running
+- Backend should show "Backend server running" message
+
+## Production Deployment
+
+### Environment Variables
+Set these on your hosting platform:
 ```env
-VITE_API_URL=http://localhost:3001/api
-```
-
-**Backend (.env):**
-```env
-DATABASE_URL=postgresql://postgres:password@host:5432/database
+DATABASE_URL=your_production_database_url
 DATABASE_SSL=true
 PORT=3001
 ```
 
-## Production Deployment
+### Deploy Backend
+- Deploy `backend/` folder to your Node.js hosting service
+- Ensure `npm install` and `npm start` run successfully
 
-### Heroku Example
+### Deploy Frontend
+- Build: `npm run build` (from project root)
+- Deploy the `dist/` folder to static hosting
+- Update `src/database/api.ts` with your production backend URL
 
-1. Create a Heroku app
-2. Set environment variables:
-   ```bash
-   heroku config:set DATABASE_URL=postgresql://...
-   heroku config:set DATABASE_SSL=true
-   ```
-3. Deploy:
-   ```bash
-   git push heroku main
-   ```
+## Security Best Practices
 
-### Railway/Render/DigitalOcean
+✅ **DO:**
+- Keep `.env` files private (they're in `.gitignore`)
+- Use SSL for production databases (`DATABASE_SSL=true`)
+- Use strong database passwords
+- Keep dependencies updated
 
-Similar process - set the `DATABASE_URL` environment variable and deploy `server.js`.
+❌ **DON'T:**
+- Commit `.env` files to Git
+- Share database credentials publicly
+- Expose backend server directly to internet without firewall
 
-## Troubleshooting
+## Development Tips
 
-**"Cannot connect to database"**
-- Verify DATABASE_URL is correct
-- Check if PostgreSQL server is running
-- Ensure firewall allows port 5432
-
-**"CORS error"**
-- Backend must be running on port 3001
-- Frontend must have `VITE_API_URL` set correctly
-
-**"Connection refused"**
-- Ensure `node server.js` is running in a terminal
-- Check that port 3001 is not in use: `lsof -i :3001`
-
-## File Structure
-
-```
-tasksmith/
-├── server.js                 # Backend Express server
-├── .env                      # Backend configuration (DATABASE_URL, PORT)
-├── src/
-│   ├── database/
-│   │   └── api.ts           # API client for frontend
-│   ├── hooks/
-│   │   └── useEntity.ts     # React hook using backend API
-│   └── ...
-└── package.json
+**Auto-reload on changes:**
+```bash
+cd backend
+npm run dev
 ```
 
-## How It Works
+**Check backend health:**
+```bash
+curl http://localhost:3001/api/health
+```
 
-1. **Frontend React component** calls `useEntity(config)`
-2. **useEntity hook** calls backend API methods in `src/database/api.ts`
-3. **Backend API** (server.js) receives the request
-4. **Backend** queries PostgreSQL safely using parameterized queries
-5. **Response** is returned as JSON to the frontend
+**View server logs:**
+Backend logs appear in the terminal where you ran `npm start`
 
-This ensures:
-- ✅ Credentials never exposed to browser
-- ✅ Parameterized queries prevent SQL injection
-- ✅ Connection pooling for efficiency
-- ✅ Secure, production-ready architecture
+## Need Help?
 
-## Next Steps
-
-1. Run the database schema SQL on your PostgreSQL database
-2. Start the backend: `node server.js`
-3. Start the frontend: `npm run dev`
-4. The app will now store all data in your PostgreSQL database!
+Check the `backend/README.md` for more details about the API structure and development workflow.
